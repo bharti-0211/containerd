@@ -81,6 +81,8 @@ const (
 	MountManagerPlugin plugin.Type = "io.containerd.mount-manager.v1"
 	// MountHandlerPlugin implements the mount handler interface
 	MountHandlerPlugin plugin.Type = "io.containerd.mount-handler.v1"
+	// WatchdogPlugin implements a watchdog service
+	WatchdogPlugin plugin.Type = "io.containerd.watchdog.v1"
 )
 
 const (
