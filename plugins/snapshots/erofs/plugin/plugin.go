@@ -29,6 +29,11 @@ import (
 	"github.com/docker/go-units"
 )
 
+const (
+	capaRemapIDs     = "remap-ids"
+	capaOnlyRemapIDs = "only-remap-ids"
+)
+
 // Config represents configuration for the native plugin.
 type Config struct {
 	// Root directory for the plugin
@@ -46,6 +51,9 @@ type Config struct {
 
 	// DefaultSize is the default size of a writable layer in string
 	DefaultSize string `toml:"default_size"`
+
+	// MaxUnmergedLayers (>0) enables fsmerge when the number of image layers exceeds this value.
+	MaxUnmergedLayers uint `toml:"max_unmerged_layers"`
 }
 
 func init() {
@@ -85,6 +93,17 @@ func init() {
 					return nil, fmt.Errorf("failed to parse default_size '%v': %w", config.DefaultSize, err)
 				}
 				opts = append(opts, erofs.WithDefaultSize(size))
+			}
+
+			if config.MaxUnmergedLayers > 0 {
+				opts = append(opts, erofs.WithFsMergeThreshold(config.MaxUnmergedLayers))
+			}
+
+			// Don't bother supporting overlay's slow_chown, only RemapIDs
+			ic.Meta.Capabilities = append(ic.Meta.Capabilities, capaOnlyRemapIDs)
+			if ok, err := supportsIDMappedMounts(); err == nil && ok {
+				opts = append(opts, erofs.WithRemapIDs())
+				ic.Meta.Capabilities = append(ic.Meta.Capabilities, capaRemapIDs)
 			}
 
 			ic.Meta.Exports[plugins.SnapshotterRootDir] = root

@@ -23,6 +23,7 @@ import (
 
 	"github.com/containerd/typeurl/v2"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
+	runtime "k8s.io/cri-api/pkg/apis/runtime/v1"
 
 	containerd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/core/containers"
@@ -41,12 +42,24 @@ const (
 	sandboxesDir = "sandboxes"
 	// MetadataKey is the key used for storing metadata in the sandbox extensions
 	MetadataKey = "metadata"
+	// UpdatedResourcesKey is the key for the sandbox extension storing updated resources.
+	UpdatedResourcesKey = "updated-resources"
 )
 
 const (
 	// unknownExitCode is the exit code when exit reason is unknown.
 	unknownExitCode = 255
 )
+
+// UpdatedResources holds the updated Linux resource constraints for a PodSandbox.
+type UpdatedResources struct {
+	Overhead  *runtime.LinuxContainerResources
+	Resources *runtime.LinuxContainerResources
+}
+
+func init() {
+	typeurl.Register(&UpdatedResources{}, "io.containerd.cri.v1", "UpdatedResources")
+}
 
 // getSandboxRootDir returns the root directory for managing sandbox files,
 // e.g. hosts files.
@@ -70,31 +83,10 @@ func (c *Controller) toContainerdImage(ctx context.Context, image imagestore.Ima
 }
 
 // runtimeSpec returns a default runtime spec used in cri-containerd.
-func (c *Controller) runtimeSpec(id string, baseSpecFile string, opts ...oci.SpecOpts) (*runtimespec.Spec, error) {
+func (c *Controller) runtimeSpec(id string, opts ...oci.SpecOpts) (*runtimespec.Spec, error) {
 	// GenerateSpec needs namespace.
 	ctx := ctrdutil.NamespacedContext()
 	container := &containers.Container{ID: id}
-
-	if baseSpecFile != "" {
-		baseSpec, err := c.runtimeService.LoadOCISpec(baseSpecFile)
-		if err != nil {
-			return nil, fmt.Errorf("can't load base OCI spec %q: %w", baseSpecFile, err)
-		}
-
-		spec := oci.Spec{}
-		if err := ctrdutil.DeepCopy(&spec, &baseSpec); err != nil {
-			return nil, fmt.Errorf("failed to clone OCI spec: %w", err)
-		}
-
-		// Fix up cgroups path
-		applyOpts := append([]oci.SpecOpts{oci.WithNamespacedCgroup()}, opts...)
-
-		if err := oci.ApplyOpts(ctx, nil, container, &spec, applyOpts...); err != nil {
-			return nil, fmt.Errorf("failed to apply OCI options: %w", err)
-		}
-
-		return &spec, nil
-	}
 
 	spec, err := oci.GenerateSpec(ctx, nil, container, opts...)
 	if err != nil {
